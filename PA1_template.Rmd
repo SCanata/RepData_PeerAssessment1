@@ -1,25 +1,184 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Analysis of Daily Steps Taken"
+author: "S Canata"
+date: "`r Sys.Date()`"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+## Introduction
+
+This study analizes the daily steps taken by an individual via a mobile device. The analisis consist of assessments of the mean total number of steps, the daily activity pattern, both without missing data and filling the "NA" entries with statistical data, and finally identifying the existance of different patterns during weekdays and weekend. 
+
+## Libraries
+
+I've used the readr, dplyr, ggplot2 and lubridate libraries for this study, if you don't have them installed please do so before running the code.
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
 
 
+## Loading data and processing
 
-## What is mean total number of steps taken per day?
+The dataset to be ised can be find in the same direction as a .csv file named "activisy.csv" inside a .zip file named "activity.zip". The first step is to upload this data and read it.
 
+```{r}
+# Specify the path to the zip file
+zip_file <- "activity.zip"
 
+# Specify the file within the zip archive
+csv_file_inside_zip <- "activity.csv"
 
-## What is the average daily activity pattern?
+# Unzip and read the CSV file
+# This assumes the CSV file is directly inside the zip without any subfolders
+unzipped_csv_path <- unzip(zip_file, files = csv_file_inside_zip, exdir = tempdir())
 
+# Now read the CSV file into R
+activity_data <- read_csv(file.path(tempdir(), csv_file_inside_zip))
+```
 
+## Mean Total Number of Steps Taken Per Day
 
-## Imputing missing values
+### /This section was performed ignoring the missing values./
 
+In this section we are calculating the total steps per day, building and printing an histogram of this data and printing the mean and median steps per day.
 
+```{r}
+library(dplyr)
+library(ggplot2)
 
-## Are there differences in activity patterns between weekdays and weekends?
+#Calculate the Total Number of Steps Taken Per Day
+daily_steps <- activity_data %>%
+  group_by(date) %>%
+  summarise(total_steps = sum(steps))
+
+#Setting a dataset that ignores NAs
+daily_steps_no_na <- daily_steps[!is.na(daily_steps$total_steps), ]
+
+print(daily_steps_no_na)
+#Build the histogram
+ggplot(daily_steps_no_na, aes(x = total_steps)) +
+  geom_histogram(binwidth = 1000, fill = "blue", color = "black") +
+  theme_classic() +
+  labs(title = "Histogram of Daily Steps", x = "Total Steps per Day", y = "Frequency") +
+  ylim(0, 10)  # This will limit the y-axis but also might cut off bars taller than 10
+  
+# Calculate and report mean and median
+mean_daily_steps <- mean(daily_steps_no_na$total_steps)
+median_daily_steps <- median(daily_steps_no_na$total_steps)
+
+# Print the mean and median
+
+print(paste("Mean of daily steps:", round(mean_daily_steps, 3)))
+print(paste("Median of daily steps:", median_daily_steps))
+
+```
+
+We can see that the mean of daily steps is 10,766.189 and the median is 10,765.
+
+## Average daily activity pattern
+
+### /For this section we will continue ignoring the NA values of the dataset/
+
+Now we proceed by Calculating the average number of steps per interval and build the time series. We also dettermine and print the maximum interval.
+
+```{r}
+# Calculate the average number of steps per interval
+average_interval_steps <- activity_data %>%
+  group_by(interval) %>%
+  summarise(average_steps = mean(steps, na.rm = TRUE))
+
+# Create the plot
+average_daily_activity_plot <- ggplot(average_interval_steps, aes(x = interval, y = average_steps)) +
+  geom_line(color = "blue") +
+  theme_classic() +
+  labs(title = "Average Daily Activity Pattern",
+       x = "5-minute Interval",
+       y = "Average Number of Steps")
+
+# Display the plot
+print(average_daily_activity_plot)
+
+# Identify the interval with the maximum average steps
+max_interval <- average_interval_steps[which.max(average_interval_steps$average_steps), ]
+print(max_interval)
+```
+
+Now we know that the maximum interval is the 835 minutes with an average of 206.1698 steps.
+
+## Adjusting the NA values
+
+For this section, first we calculate the total ammount of missing values
+```{r}
+# Calculate total number of missing values
+missing_values <- sum(is.na(activity_data$steps))
+print(missing_values)
+```
+
+With this we know that there are 2304 missing values.
+
+To fill them, we will use the simple method of replacing with the mean steps per 5-minute interval and repeat the histogram and mean/median calculation of the previous steps:
+```{r}
+activity_data$steps[is.na(activity_data$steps)] <- average_interval_steps$average_steps[match(activity_data$interval[is.na(activity_data$steps)], average_interval_steps$interval)]
+
+ggplot(daily_steps, aes(x = total_steps)) +
+  geom_histogram(binwidth = 1000, fill = "blue", color = "black") +
+  theme_classic() +
+  labs(title = "Histogram of Daily Steps", x = "Total Steps per Day", y = "Frequency") +
+  ylim(0, 10)  # This will limit the y-axis but also might cut off bars taller than 10
+  
+# Calculate and report mean and median
+new_mean_daily_steps <- mean(daily_steps$total_steps)
+new_median_daily_steps <- median(daily_steps$total_steps)
+
+# Print the mean and median
+
+print(paste("Mean of daily steps:", round(mean_daily_steps, 3)))
+print(paste("Median of daily steps:", median_daily_steps))
+```
+ In this new iteration we have the same Mean and Median, 10,766.189 and 10,765 respectively. This are the benefits of doing so:
+ 
+ Enable Complete Data Analysis: We are able to utilize the whole dataset, instead of compromising information.
+ 
+ Reduces Bias: I case the data is missing not at random, the exclution of it can provoke bias in the dataset.
+ 
+ Increases Statistical Power: By maximizing the sample size, which can increase the confidence in analysis.
+
+## Differences in Activity Patterns Between Weekdays and Weekends
+
+### /For this part we will use again the filled dataset from the previous section/
+
+Now we want to identify significant differences between the weekdays and weekends data.
+
+For this we first add a variable "day_type" to differentiate both categories
+```{r}
+# Create a new column 'day_type'
+activity_data <- activity_data %>%
+  mutate(day_of_week = weekdays(date),
+         day_type = ifelse(day_of_week %in% c("Saturday", "Sunday"), "weekend", "weekday")) %>%
+  mutate(day_type = as.factor(day_type))
+
+#Calculate the Average Number of Steps for Each Interval by Day Type
+average_steps_by_day_type <- activity_data %>%
+  group_by(interval, day_type) %>%
+  summarise(average_steps = mean(steps, na.rm = TRUE))
+
+#Create a Panel Plot
+p <- ggplot(average_steps_by_day_type, aes(x = interval, y = average_steps)) +
+  geom_line() +
+  facet_wrap(~day_type, ncol = 1, scales = "free_y") +
+  theme_classic() +
+  labs(title = "Activity Patterns: Weekday vs. Weekend",
+       x = "Interval",
+       y = "Average Number of Steps")
+
+print(p)
+```
+As we can see, the week days present a higher peak at the beggining of the day, but lower movement later on. This suggests that the subject walks more at a certain time of the day during weekdays, but during weekends they have more movement along the day.
